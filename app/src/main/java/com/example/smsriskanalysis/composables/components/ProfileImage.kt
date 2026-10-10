@@ -16,13 +16,19 @@ import com.example.smsriskanalysis.R
 import com.example.smsriskanalysis.ui.theme.SMSRiskAnalysisTheme
 
 @Composable
-fun ProfileImage(profileLink: String? = null, profileLinkNumber: Int? = null, contentDescription: String? = null){
+fun ProfileImage(
+    profileLink: String? = null,
+    contentDescription: String? = null
+) {
     Box(
-        modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(
-            model = profileLink ?: profileLinkNumber,
+            model = profileLink ?: R.drawable.default_image,
             contentDescription = contentDescription,
             modifier = Modifier
                 .size(48.dp)
@@ -35,6 +41,6 @@ fun ProfileImage(profileLink: String? = null, profileLinkNumber: Int? = null, co
 @Composable
 fun GreetingPreview() {
     SMSRiskAnalysisTheme {
-        ProfileImage(profileLinkNumber = R.drawable.default_image)
+        ProfileImage(profileLink = null)
     }
 }

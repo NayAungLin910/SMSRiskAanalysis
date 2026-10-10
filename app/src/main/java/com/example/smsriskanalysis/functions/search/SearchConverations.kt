@@ -2,14 +2,13 @@ package com.example.smsriskanalysis.functions.search
 
 import com.example.smsriskanalysis.models.ConversationRowData
 
-fun searchConversations (
+fun searchConversations(
     query: String,
-    converations: List<ConversationRowData>
+    conversations: List<ConversationRowData>
 ): List<ConversationRowData> {
-    val searchedResults = converations.filter { conversation ->
-        conversation.contact.contains(query, ignoreCase = true) ||
-        conversation.name.contains(query, ignoreCase = true) ||
-        conversation.message.contains(query, ignoreCase = true)
+    return conversations.filter { conversation ->
+        conversation.address.contains(query, ignoreCase = true) ||
+        (conversation.contactName?.contains(query, ignoreCase = true) == true) ||
+        conversation.latestMessage.contains(query, ignoreCase = true)
     }
-    return searchedResults
 }

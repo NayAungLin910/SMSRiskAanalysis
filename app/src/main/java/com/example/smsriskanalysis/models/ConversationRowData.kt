@@ -1,11 +1,11 @@
 package com.example.smsriskanalysis.models
 
 data class ConversationRowData(
-    val contact: String,
-    val name: String,
-    val message: String,
-    val time: String,
-    val profileLink: String?,
-    val profileLinkNumber: Int?,
-    val profileDescription: String?
+    val threadId: Long,
+    val address: String,
+    val contactName: String?,
+    val contactPhotoUri: String?,
+    val latestMessage: String,
+    val latestMessageTime: Long,
+    val unreadCount: Int
 )

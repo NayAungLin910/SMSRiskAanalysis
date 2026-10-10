@@ -14,6 +14,27 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.smsriskanalysis.composables.components.ProfileImage
+import com.example.smsriskanalysis.models.ConversationRowData
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@Composable
+fun ConversationRow(
+    conversation: ConversationRowData,
+    modifier: Modifier = Modifier
+) {
+    val displayName = conversation.contactName ?: conversation.address
+    val timeString = formatTimestamp(conversation.latestMessageTime)
+    ConversationRow(
+        contact = displayName,
+        message = conversation.latestMessage,
+        time = timeString,
+        profilelink = conversation.contactPhotoUri,
+        profileDescription = displayName,
+        modifier = modifier
+    )
+}
 
 @Composable
 fun ConversationRow(
@@ -21,18 +42,19 @@ fun ConversationRow(
     message: String,
     time: String,
     profilelink: String?,
-    profileLinkNumber: Int?,
-    profileDescription: String?
+    profileDescription: String?,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
 
         ProfileImage(
-            profilelink, profileLinkNumber, profileDescription
+            profileLink = profilelink,
+            contentDescription = profileDescription
         )
 
         Spacer(
@@ -68,4 +90,9 @@ fun ConversationRow(
             )
         }
     }
+}
+
+private fun formatTimestamp(timestamp: Long): String {
+    val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+    return sdf.format(Date(timestamp))
 }
