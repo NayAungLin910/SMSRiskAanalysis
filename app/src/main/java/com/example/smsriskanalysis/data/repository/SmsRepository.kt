@@ -5,7 +5,8 @@ import android.provider.Telephony
 import com.example.smsriskanalysis.models.ConversationRowData
 
 class SmsRepository(
-    private val contentResolver: ContentResolver
+    private val contentResolver: ContentResolver,
+    private val contactRepository: ContactRepository
 ) {
     fun getConversations(): List<ConversationRowData> {
         val latestMessages = linkedMapOf<Long, SmsMessageData>()
@@ -32,32 +33,40 @@ class SmsRepository(
             val addressIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
             val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
             val dateIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
-            val threatIdIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
+            val threadIdIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
             val typeIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.TYPE)
 
             while (cursor.moveToNext()) {
-                val threatId = cursor.getLong(threatIdIndex)
-                if (latestMessages.containsKey(threatId)) {
+                val threadId = cursor.getLong(threadIdIndex)
+                if (latestMessages.containsKey(threadId)) {
+                    continue
                     continue
                 }
                 val message = SmsMessageData(
                     id = cursor.getLong(idIndex),
-                    threadId = cursor.getLong(threatIdIndex),
+                    threadId = cursor.getLong(threadIdIndex),
                     address = cursor.getString(addressIndex),
-                    body = cursor.getString(bodyIndex),
+                    body = cursor.getString(bodyIndex).orEmpty(),
                     date = cursor.getLong(dateIndex),
                     type = cursor.getInt(typeIndex)
                 )
-                latestMessages[threatId] = message
+                latestMessages[threadId] = message
             }
         }
 
         return latestMessages.values.map { message ->
+
+            val contact = message.address
+                ?.takeIf { it.isNotBlank() }
+                ?.let { address ->
+                    contactRepository.getContactByPhoneNumber(address)
+                }
+
             ConversationRowData(
                 threadId = message.threadId,
                 address = message.address.orEmpty(),
-                contactName = null,
-                contactPhotoUri = null,
+                contactName = contact?.name,
+                contactPhotoUri = contact?.photoUri,
                 latestMessage = message.body,
                 latestMessageTime = message.date,
                 unreadCount = 0
