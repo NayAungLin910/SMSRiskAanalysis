@@ -7,15 +7,24 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.provider.Telephony
+import android.util.Log
+import android.widget.Space
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -24,239 +33,28 @@ import com.example.smsriskanalysis.composables.ConversationRow
 import com.example.smsriskanalysis.models.ConversationRowData
 import com.example.smsriskanalysis.ui.theme.SMSRiskAnalysisTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.example.smsriskanalysis.composables.ConversationSearchBar
 import com.example.smsriskanalysis.data.repository.ContactRepository
 import com.example.smsriskanalysis.data.repository.SmsRepository
-import com.example.smsriskanalysis.functions.search.searchConversations
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
-//val conversations = listOf<ConversationRowData>(
-//    ConversationRowData(
-//        threadId = 1L,
-//        address = "Amazon Japan",
-//        contactName = "Amazon Support",
-//        contactPhotoUri = null,
-//        latestMessage = "Your package has been shipped and will arrive tomorrow.",
-//        latestMessageTime = 1700000000000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 2L,
-//        address = "+1 555-0142",
-//        contactName = "John Smith",
-//        contactPhotoUri = null,
-//        latestMessage = "Hey, are you free this evening?",
-//        latestMessageTime = 1700003600000L,
-//        unreadCount = 1
-//    ),
-//    ConversationRowData(
-//        threadId = 3L,
-//        address = "+81 90-0000-0000",
-//        contactName = "Bank Verification Team",
-//        contactPhotoUri = null,
-//        latestMessage = "Your bank account has been suspended. Please verify your information immediately.",
-//        latestMessageTime = 1700007200000L,
-//        unreadCount = 2
-//    ),
-//    ConversationRowData(
-//        threadId = 4L,
-//        address = "+81 80-1111-2222",
-//        contactName = "Yamada Taro",
-//        contactPhotoUri = null,
-//        latestMessage = "Let's meet at the station tomorrow.",
-//        latestMessageTime = 1700010800000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 5L,
-//        address = "Japan Post",
-//        contactName = "Japan Post Support",
-//        contactPhotoUri = null,
-//        latestMessage = "Your delivery address needs to be confirmed before we can deliver your package.",
-//        latestMessageTime = 1700014400000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 6L,
-//        address = "Rakuten Service",
-//        contactName = "Rakuten Service",
-//        contactPhotoUri = null,
-//        latestMessage = "Thank you for using our service. Your order information has been updated.",
-//        latestMessageTime = 1700018000000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 7L,
-//        address = "Microsoft",
-//        contactName = "Microsoft Support",
-//        contactPhotoUri = null,
-//        latestMessage = "We detected unusual activity on your account. Please review your security settings.",
-//        latestMessageTime = 1700021600000L,
-//        unreadCount = 1
-//    ),
-//    ConversationRowData(
-//        threadId = 8L,
-//        address = "+81 80-3333-4444",
-//        contactName = "Yamada Hanako",
-//        contactPhotoUri = null,
-//        latestMessage = "The meeting schedule has been changed to Friday afternoon.",
-//        latestMessageTime = 1700025200000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 9L,
-//        address = "Seven Bank",
-//        contactName = "Seven Bank Customer Center",
-//        contactPhotoUri = null,
-//        latestMessage = "Please check your latest transaction history and contact us if you notice anything unusual.",
-//        latestMessageTime = 1700028800000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 10L,
-//        address = "Google",
-//        contactName = "Google Security Team",
-//        contactPhotoUri = null,
-//        latestMessage = "Your Google account requires additional security verification.",
-//        latestMessageTime = 1700032400000L,
-//        unreadCount = 1
-//    ),
-//    ConversationRowData(
-//        threadId = 11L,
-//        address = "SoftGuide",
-//        contactName = "SoftGuide Dev Team",
-//        contactPhotoUri = null,
-//        latestMessage = "The latest development task has been assigned to your project.",
-//        latestMessageTime = 1700036000000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 12L,
-//        address = "Immigration Services",
-//        contactName = "Immigration Support Division",
-//        contactPhotoUri = null,
-//        latestMessage = "Please check the latest information regarding your residence status application.",
-//        latestMessageTime = 1700039600000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 13L,
-//        address = "Netflix",
-//        contactName = "Netflix Customer Service",
-//        contactPhotoUri = null,
-//        latestMessage = "Your monthly subscription payment could not be processed successfully.",
-//        latestMessageTime = 1700043200000L,
-//        unreadCount = 1
-//    ),
-//    ConversationRowData(
-//        threadId = 14L,
-//        address = "Mizuho Bank",
-//        contactName = "Mizuho Security Team",
-//        contactPhotoUri = null,
-//        latestMessage = "A new login was detected on your online banking account.",
-//        latestMessageTime = 1700046800000L,
-//        unreadCount = 2
-//    ),
-//    ConversationRowData(
-//        threadId = 15L,
-//        address = "ECC College",
-//        contactName = "ECC Student Office",
-//        contactPhotoUri = null,
-//        latestMessage = "Please remember to check your timetable and upcoming assignments.",
-//        latestMessageTime = 1700050400000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 16L,
-//        address = "Customs",
-//        contactName = "Customs Support Center",
-//        contactPhotoUri = null,
-//        latestMessage = "Additional information is required to complete the customs clearance process.",
-//        latestMessageTime = 1700054000000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 17L,
-//        address = "TEPCO",
-//        contactName = "TEPCO Account Dept",
-//        contactPhotoUri = null,
-//        latestMessage = "Your latest electricity bill is now available for online payment.",
-//        latestMessageTime = 1700057600000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 18L,
-//        address = "Osaka Govt",
-//        contactName = "Osaka Tax Info Center",
-//        contactPhotoUri = null,
-//        latestMessage = "Please review the latest notification regarding your municipal tax payment.",
-//        latestMessageTime = 1700061200000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 19L,
-//        address = "Academic Center",
-//        contactName = "Academic Guidance Office",
-//        contactPhotoUri = null,
-//        latestMessage = "Your academic guidance appointment has been scheduled for next week.",
-//        latestMessageTime = 1700064800000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 20L,
-//        address = "Credit Card Support",
-//        contactName = "Fraud Prevention Dept",
-//        contactPhotoUri = null,
-//        latestMessage = "We need to verify a recent payment made using your credit card.",
-//        latestMessageTime = 1700068400000L,
-//        unreadCount = 1
-//    ),
-//    ConversationRowData(
-//        threadId = 21L,
-//        address = "Digital ID",
-//        contactName = "Digital ID Verification Center",
-//        contactPhotoUri = null,
-//        latestMessage = "Please complete the required verification process using the official website.",
-//        latestMessageTime = 1700072000000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 22L,
-//        address = "Asset Management",
-//        contactName = "Asset Management Advisory",
-//        contactPhotoUri = null,
-//        latestMessage = "Your investment account has received a new notification regarding your portfolio.",
-//        latestMessageTime = 1700075600000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 23L,
-//        address = "Mobile Network",
-//        contactName = "Mobile Telecom Support",
-//        contactPhotoUri = null,
-//        latestMessage = "Your mobile service account requires confirmation of your registered information.",
-//        latestMessageTime = 1700079200000L,
-//        unreadCount = 0
-//    ),
-//    ConversationRowData(
-//        threadId = 24L,
-//        address = "Career Support",
-//        contactName = "Career Consulting Center",
-//        contactPhotoUri = null,
-//        latestMessage = "A new position matching your software engineering experience is available.",
-//        latestMessageTime = 1700082800000L,
-//        unreadCount = 0
-//    )
-//)
+import com.example.smsriskanalysis.layout.SearchScreen
+import com.example.smsriskanalysis.observers.SmsContentObserver
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -283,6 +81,23 @@ fun MyScreen(
 ) {
 
     val context = LocalContext.current
+
+    val contentResolver = context.contentResolver
+
+    val contactRepository = remember(context) {
+        ContactRepository(contentResolver)
+    }
+
+    val smsRepository = remember(context) { SmsRepository(contentResolver, contactRepository) }
+
+    val listState = rememberLazyListState();
+
+    val coroutineScope = rememberCoroutineScope()
+
+    var isSearchScreen by remember {
+        mutableStateOf(false)
+    }
+
     var showPermissionDeniedDialog by remember { mutableStateOf(false) }
     var hasSmsPermission by remember { mutableStateOf(false) }
     var hasContactPermission by remember { mutableStateOf(false) }
@@ -298,6 +113,24 @@ fun MyScreen(
     }
 
     var loadError by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    val pageSize = 50
+
+    var hasMoreConversations by remember {
+        mutableStateOf(true)
+    }
+
+    var nextConversationOffset by remember {
+        mutableStateOf(0)
+    }
+
+    var isLoadingMore by remember {
+        mutableStateOf(false)
+    }
+
+    var loadMoreError by remember {
         mutableStateOf<String?>(null)
     }
 
@@ -327,26 +160,140 @@ fun MyScreen(
     }
 
     LaunchedEffect(hasSmsPermission, hasContactPermission) {
-        if (hasSmsPermission && hasContactPermission) {
-            isLoading = true
-            loadError = null
+        if (!hasSmsPermission || !hasContactPermission) {
+            isLoading = false
+            return@LaunchedEffect
         }
 
+        isLoading = true
+        loadError = null
+
+        //Reset pagination when starting a fresh load
+        conversations = emptyList()
+        nextConversationOffset = 0
+        hasMoreConversations = true
+        isLoadingMore = false
+        loadMoreError = null
+
         try {
-            conversations = withContext(Dispatchers.IO) {
-                val contentResolver = context.contentResolver
+            val page = smsRepository.getConversationsPage(
+                limit = pageSize,
+                offset = 0
+            )
 
-                val contactRepository = ContactRepository(contentResolver)
+            conversations = page.conversations
+            hasMoreConversations = page.hasMore
+            nextConversationOffset = page.nextOffset
 
-                val smsRepository = SmsRepository(contentResolver, contactRepository)
-
-                smsRepository.getConversations()
-            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
+            android.util.Log.e("SmsDebug", "Failed to load conversations", e)
             loadError = e.message ?: "Unable to load conversations."
-
         } finally {
-           isLoading = false
+            isLoading = false
+        }
+    }
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val lastVisibleIndex =
+                listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+
+            val loadMoreThreshold =
+                (conversations.size - 20).coerceAtLeast(0) // Ensure a minimum threshold
+
+            conversations.isNotEmpty() && lastVisibleIndex >= loadMoreThreshold
+        }
+    }
+
+    LaunchedEffect(
+        shouldLoadMore,
+        hasMoreConversations,
+        isLoadingMore,
+        isLoading,
+        isSearchScreen
+    ) {
+        if(isSearchScreen) return@LaunchedEffect
+
+        if (!hasSmsPermission || !hasContactPermission) {
+            return@LaunchedEffect
+        }
+
+        if (
+            !shouldLoadMore ||
+            !hasMoreConversations ||
+            isLoading ||
+            isLoadingMore
+        ) {
+            return@LaunchedEffect
+        }
+
+        isLoadingMore = true
+        loadMoreError = null
+
+        try {
+            val page = smsRepository.getConversationsPage(
+                limit = pageSize,
+                offset = nextConversationOffset
+            )
+
+            conversations = conversations + page.conversations
+
+            hasMoreConversations = page.hasMore
+            nextConversationOffset = page.nextOffset
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("My Screen", "Failed to load more conversations", e)
+            loadMoreError = e.message ?: "An unexpected error occurred"
+        } finally {
+            isLoadingMore = false
+        }
+    }
+
+    DisposableEffect(
+        hasSmsPermission,
+        hasContactPermission,
+        smsRepository
+    ) {
+        if (hasSmsPermission && hasContactPermission) {
+            val observer = SmsContentObserver {
+                coroutineScope.launch {
+                    try {
+                        val page = smsRepository.getConversationsPage(
+                            limit = pageSize,
+                            offset = 0
+                        )
+
+                        conversations = page.conversations
+                        hasMoreConversations = page.hasMore
+                        nextConversationOffset = page.nextOffset
+                        isLoadingMore = false
+                        loadError = null
+                        loadMoreError = null
+
+
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e("SmsDebug", "Failed to load conversations", e)
+                        loadError = e.message ?: "Unable to load conversations."
+                    }
+                }
+            }
+
+            contentResolver.registerContentObserver(
+                Telephony.Sms.CONTENT_URI,
+                true,
+                observer
+            )
+
+            onDispose {
+                contentResolver.unregisterContentObserver(observer)
+            }
+        } else {
+            onDispose { }
         }
     }
 
@@ -392,21 +339,124 @@ fun MyScreen(
         )
     }
 
-    var searchQuery by remember {
-        mutableStateOf("")
-    }
+    Box(
+        modifier = modifier.fillMaxSize(),
+    ) {
+        if (isSearchScreen) {
+            SearchScreen(
+                onBack = { isSearchScreen = false },
+                contactRepository = contactRepository,
+                smsRepository = smsRepository
+            )
+        } else {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                ConversationSearchBar(
+                    onClick = {
+                        if (hasSmsPermission && hasContactPermission) {
+                            isSearchScreen = true
+                        } else if (!hasSmsPermission) {
+                            smsRequestKey++
+                        } else {
+                            contactRequestKey++
+                        }
+                    }
+                )
 
-    var displayedConversations = if (searchQuery.isBlank()) {
-        conversations
-    } else {
-        searchConversations(searchQuery, conversations)
-    }
+                when {
+                    isLoading -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                CircularProgressIndicator()
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text("Loading messages...")
+                            }
+                        }
+                    }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        ConversationSearchBar(query = searchQuery, onQueryChange = { query -> searchQuery = query })
-        LazyColumn() {
-            items(displayedConversations) { conversation ->
-                ConversationRow(conversation = conversation)
+                    loadError != null -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Failed to load messages.\n$loadError",
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+
+                    conversations.isEmpty() -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "No messages yet!",
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Your SMS conversations will appear here when you send or receive text messages.",
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = modifier.padding(horizontal = 24.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    else -> {
+                        LazyColumn(modifier = Modifier.weight(1f), state = listState) {
+                            items(
+                                items = conversations,
+                                key = { conversation -> conversation.threadId }
+                            ) { conversation ->
+                                ConversationRow(
+                                    conversation = conversation
+                                )
+                            }
+                            if (isLoadingMore) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator()
+                                    }
+                                }
+                            }
+
+                            if (loadMoreError != null) {
+                                item {
+                                    Text(
+                                        text = loadMoreError ?: "Unable to load more messages.",
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.padding(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
