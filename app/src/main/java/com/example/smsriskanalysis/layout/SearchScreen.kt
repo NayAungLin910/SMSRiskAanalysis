@@ -24,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,14 +40,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.SolidColor
+import com.example.smsriskanalysis.composables.ConversationRow
+import com.example.smsriskanalysis.composables.components.ProfileImage
 import com.example.smsriskanalysis.data.repository.ContactRepository
 import com.example.smsriskanalysis.data.repository.SmsRepository
+import com.example.smsriskanalysis.models.ConversationRowData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
@@ -60,13 +67,18 @@ fun SearchScreen(
         mutableStateOf<List<ContactRepository.ContactSearchData>>(emptyList())
     }
 
-    var messages by remember {
-        mutableStateOf<List<SmsRepository.SmsMessageData>>(emptyList())
+    var conversations by remember {
+        mutableStateOf<List<ConversationRowData>>(emptyList())
     }
 
     var isLoading by remember { mutableStateOf(false) }
-
+    var isLoadingMore by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
+
+    var hasMore by remember { mutableStateOf(false) }
+    var nextOffset by remember { mutableStateOf(0) }
+
+    val coroutineScope = rememberCoroutineScope()
 
     BackHandler {
         onBack()
@@ -75,16 +87,18 @@ fun SearchScreen(
     LaunchedEffect(searchQuery, contactRepository, smsRepository) {
         val query = searchQuery.trim()
 
+        contacts = emptyList()
+        conversations = emptyList()
+        hasMore = false
+        nextOffset = 0
+        searchError = null
+
         if (query.isBlank()) {
-            contacts = emptyList()
-            messages = emptyList()
-            searchError = null
             isLoading = false
             return@LaunchedEffect
         }
 
         isLoading = true
-        searchError = null
 
         try {
             delay(250.milliseconds)
@@ -94,21 +108,25 @@ fun SearchScreen(
                     contactRepository.searchContacts(query)
                 }
 
-                val messageSearch = async {
-                    smsRepository.searchMessages(query)
+                val conversationSearch = async {
+                    smsRepository.searchConversations(query, limit = 50, offset = 0)
                 }
 
-                contactSearch.await() to messageSearch.await()
+                contactSearch.await() to conversationSearch.await()
             }
             contacts = results.first
-            messages = results.second
+            conversations = results.second.conversations
+            hasMore = results.second.hasMore
+            nextOffset = results.second.nextOffset
+
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e("SearchScreen", "Search operation failed", e)
             searchError = "Unable to search. Please try again"
             contacts = emptyList()
-            messages = emptyList()
+            conversations = emptyList()
+            hasMore = false
         } finally {
             isLoading = false
         }
@@ -164,16 +182,18 @@ fun SearchScreen(
                 .fillMaxSize()
                 .padding(top = 8.dp)
         ) {
-            item {
-                Text(
-                    text = "CONTACTS",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(
-                        horizontal = 20.dp, vertical = 8.dp
+            if (contacts.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "CONTACTS",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(
+                            horizontal = 20.dp, vertical = 8.dp
+                        )
                     )
-                )
+                }
             }
             item {
                 LazyRow(
@@ -187,67 +207,42 @@ fun SearchScreen(
                             modifier = Modifier.width(72.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Surface(
-                                modifier = Modifier.size(60.dp),
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceVariant
-                            ) {
-                                Box(
-                                   contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Search,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
+                            ProfileImage(
+                                profileLink = contact.photoUri,
+                                contentDescription = contact.name
+                            )
                             Text(
-                                text = contact.name, style = MaterialTheme.typography.bodyLarge
+                                text = contact.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 1
                             )
                             Text(
                                 text = contact.phoneNumber,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
                             )
                         }
                     }
                 }
             }
-            item {
-                Text(
-                    text = "MESSAGES",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(
-                        horizontal = 20.dp,
-                        vertical = 8.dp,
-                    )
-                )
-            }
-            items(
-                items = messages, key = { it.id }) { message ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = 20.dp, vertical = 10.dp
+            if (conversations.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "MESSAGES",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(
+                            horizontal = 20.dp,
+                            vertical = 8.dp,
                         )
-                ) {
-                    Text(
-                        text = message.address ?: "Unkown sender",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = message.body,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3
                     )
                 }
+            }
+            items(
+                items = conversations, key = { it.threadId }) { conversation ->
+                ConversationRow(conversation, modifier = Modifier.fillMaxWidth())
             }
             if (isLoading) {
                 item {
@@ -257,7 +252,8 @@ fun SearchScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            } else if (searchError != null) {
+            }
+            if (searchError != null) {
                 item {
                     Text(
                         text = searchError!!,
@@ -265,13 +261,75 @@ fun SearchScreen(
                         color = MaterialTheme.colorScheme.error
                     )
                 }
-            } else if (searchQuery.isNotBlank() && contacts.isEmpty() && messages.isEmpty()) {
+            }
+            if (searchQuery.isNotBlank() && !isLoading && !isLoadingMore && !hasMore && conversations.isEmpty() && contacts.isEmpty() && searchError == null) {
                 item {
                     Text(
                         text = "No matching contacts or messages",
                         modifier = Modifier.padding(20.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+            if (hasMore && !isLoading && searchError == null) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Button(
+                            enabled = !isLoadingMore,
+                            onClick = {
+                                val query = searchQuery.trim()
+                                if (query.isNotBlank() && !isLoadingMore) {
+                                    coroutineScope.launch {
+                                        isLoadingMore = true
+                                        try {
+                                            val result = smsRepository.searchConversations(
+                                                query = query,
+                                                limit = 50,
+                                                offset = nextOffset
+                                            )
+                                            if (searchQuery.trim() == query) {
+                                                val existingIds =
+                                                    conversations.map { it.threadId }.toSet()
+
+                                                conversations =
+                                                    conversations + result.conversations.filter {
+                                                        it.threadId !in existingIds
+                                                    }
+
+                                                hasMore = result.hasMore
+                                                nextOffset = result.nextOffset
+                                            }
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            Log.e(
+                                                "SearchScreen",
+                                                "Unable to load more conversations",
+                                                e
+                                            )
+                                            searchError = "Unable to load more results. "
+                                        } finally {
+                                            isLoadingMore = false
+                                        }
+                                    }
+                                }
+                            }
+                        ) {
+                            if (isLoadingMore) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text(text = "Load More")
+                            }
+                        }
+                    }
                 }
             }
         }

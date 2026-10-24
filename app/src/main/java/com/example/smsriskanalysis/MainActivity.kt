@@ -45,10 +45,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.smsriskanalysis.composables.ConversationSearchBar
+import com.example.smsriskanalysis.composables.MainNavbar
 import com.example.smsriskanalysis.data.repository.ContactRepository
 import com.example.smsriskanalysis.data.repository.SmsRepository
 import com.example.smsriskanalysis.layout.SearchScreen
@@ -91,6 +93,8 @@ fun MyScreen(
     val smsRepository = remember(context) { SmsRepository(contentResolver, contactRepository) }
 
     val listState = rememberLazyListState();
+
+    var hasAppliedInitialScroll by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -159,6 +163,13 @@ fun MyScreen(
         )
     }
 
+    LaunchedEffect(conversations.isNotEmpty(), isLoading, isSearchScreen) {
+        if (conversations.isNotEmpty() && !isLoading && !hasAppliedInitialScroll && !isSearchScreen) {
+            listState.animateScrollToItem(1)
+            hasAppliedInitialScroll = true
+        }
+    }
+
     LaunchedEffect(hasSmsPermission, hasContactPermission) {
         if (!hasSmsPermission || !hasContactPermission) {
             isLoading = false
@@ -201,7 +212,7 @@ fun MyScreen(
                 listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
 
             val loadMoreThreshold =
-                (conversations.size - 20).coerceAtLeast(0) // Ensure a minimum threshold
+                (conversations.size + 1 - 20).coerceAtLeast(0) // Ensure a minimum threshold
 
             conversations.isNotEmpty() && lastVisibleIndex >= loadMoreThreshold
         }
@@ -214,7 +225,7 @@ fun MyScreen(
         isLoading,
         isSearchScreen
     ) {
-        if(isSearchScreen) return@LaunchedEffect
+        if (isSearchScreen) return@LaunchedEffect
 
         if (!hasSmsPermission || !hasContactPermission) {
             return@LaunchedEffect
@@ -352,18 +363,8 @@ fun MyScreen(
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-                ConversationSearchBar(
-                    onClick = {
-                        if (hasSmsPermission && hasContactPermission) {
-                            isSearchScreen = true
-                        } else if (!hasSmsPermission) {
-                            smsRequestKey++
-                        } else {
-                            contactRequestKey++
-                        }
-                    }
-                )
 
+                MainNavbar(onEditClick = {})
                 when {
                     isLoading -> {
                         Box(
@@ -424,6 +425,19 @@ fun MyScreen(
 
                     else -> {
                         LazyColumn(modifier = Modifier.weight(1f), state = listState) {
+                            item(key = "search_bar") {
+                                ConversationSearchBar(
+                                    onClick = {
+                                        if (hasSmsPermission && hasContactPermission) {
+                                            isSearchScreen = true
+                                        } else if (!hasSmsPermission) {
+                                            smsRequestKey++
+                                        } else {
+                                            contactRequestKey++
+                                        }
+                                    }
+                                )
+                            }
                             items(
                                 items = conversations,
                                 key = { conversation -> conversation.threadId }
