@@ -1,11 +1,13 @@
 package com.example.smsriskanalysis.composables
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -22,7 +24,10 @@ import java.util.Locale
 @Composable
 fun ConversationRow(
     conversation: ConversationRowData,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onSelectClick: (() -> Unit)? = null
 ) {
     val displayName = conversation.contactName ?: conversation.address
     val timeString = formatTimestamp(conversation.latestMessageTime)
@@ -32,7 +37,10 @@ fun ConversationRow(
         time = timeString,
         profilelink = conversation.contactPhotoUri,
         profileDescription = displayName,
-        modifier = modifier
+        modifier = modifier,
+        isSelectionMode = isSelectionMode,
+        isSelected = isSelected,
+        onSelectClick = onSelectClick
     )
 }
 
@@ -43,14 +51,32 @@ fun ConversationRow(
     time: String,
     profilelink: String?,
     profileDescription: String?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSelected: Boolean = false,
+    isSelectionMode: Boolean = false,
+    onSelectClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .then(
+                if(isSelectionMode && onSelectClick != null) {
+                    Modifier.clickable{onSelectClick()}
+                } else {
+                    Modifier
+                }
+            )
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if(isSelectionMode) {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = {
+                    onSelectClick?.invoke()
+                }
+            )
+        }
 
         ProfileImage(
             profileLink = profilelink,

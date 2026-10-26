@@ -23,9 +23,14 @@ fun RuntimePermissionHandler(
     val context = LocalContext.current
     val lifeCycleOwner = LocalLifecycleOwner.current
 
+    var isRequestInProgress by remember { mutableStateOf(false) }
+
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { isGranted ->
+
+        isRequestInProgress = false
+
         if (isGranted) {
             onPermissionGranted()
         } else {
@@ -40,8 +45,10 @@ fun RuntimePermissionHandler(
             permission
         ) == PackageManager.PERMISSION_GRANTED
         if (isGranted) {
+            isRequestInProgress = false
             onPermissionGranted()
         } else {
+            isRequestInProgress = true
             launcher.launch(permission)
         }
     }
@@ -50,15 +57,14 @@ fun RuntimePermissionHandler(
     // Recheck permission when returning from Settings or another screen.
     DisposableEffect(lifeCycleOwner, permission) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
+            if (event == Lifecycle.Event.ON_RESUME && !isRequestInProgress) {
+
                 val isGranted = ContextCompat.checkSelfPermission(
                     context,
                     permission
                 ) == PackageManager.PERMISSION_GRANTED
                 if (isGranted) {
                     onPermissionGranted()
-                } else {
-                    onPermissionDenied()
                 }
             }
         }

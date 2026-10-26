@@ -1,8 +1,11 @@
 package com.example.smsriskanalysis.data.repository
 
+import android.R
 import android.content.ContentResolver
 import android.provider.Telephony
+import android.util.Log
 import androidx.compose.runtime.mutableStateOf
+import coil.util.Logger
 import com.example.smsriskanalysis.models.ConversationPage
 import com.example.smsriskanalysis.models.ConversationRowData
 import kotlinx.coroutines.Dispatchers
@@ -102,6 +105,35 @@ class SmsRepository(
             hasMore = hasMore,
             nextOffset = offset + conversations.size
         )
+    }
+
+    suspend fun deleteConversations(
+        threadIds: Set<Long>
+    ): Int = withContext(Dispatchers.IO) {
+        if (threadIds.isEmpty()) {
+            return@withContext 0
+        }
+        var deletedCount = 0
+
+        for(threatId in threadIds) {
+            val count = contentResolver.delete(
+                Telephony.Sms.CONTENT_URI,
+                "${Telephony.Sms.THREAD_ID} = ?",
+                arrayOf(threatId.toString())
+            )
+
+
+            Log.d(
+                "SmsRepository",
+                "Thread ID: $threatId, deleted SMS records: $count"
+            )
+
+            deletedCount += count
+        }
+
+        Log.d("SmsRepository", "Total deleted SMS records: $deletedCount")
+
+        deletedCount
     }
 
     suspend fun searchConversations(
