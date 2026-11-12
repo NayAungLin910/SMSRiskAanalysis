@@ -1,7 +1,7 @@
 package com.example.smsriskanalysis.data.repository
 
-import android.R
 import android.content.ContentResolver
+import android.net.Uri
 import android.provider.Telephony
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
@@ -115,17 +115,36 @@ class SmsRepository(
         }
         var deletedCount = 0
 
-        for(threatId in threadIds) {
-            val count = contentResolver.delete(
-                Telephony.Sms.CONTENT_URI,
-                "${Telephony.Sms.THREAD_ID} = ?",
-                arrayOf(threatId.toString())
-            )
+        for (threadId in threadIds) {
+            // Try deleting via standard Android conversation URI first
+            var count = try {
+                contentResolver.delete(
+                    Uri.parse("content://sms/conversations/$threadId"),
+                    null,
+                    null
+                )
+            } catch (e: Exception) {
+                Log.w("SmsRepository", "Failed to delete via conversation URI for thread $threadId", e)
+                0
+            }
 
+            // Fallback to Telephony.Sms.CONTENT_URI if needed
+            if (count == 0) {
+                count = try {
+                    contentResolver.delete(
+                        Telephony.Sms.CONTENT_URI,
+                        "${Telephony.Sms.THREAD_ID} = ?",
+                        arrayOf(threadId.toString())
+                    )
+                } catch (e: Exception) {
+                    Log.w("SmsRepository", "Failed to delete via Telephony.Sms.CONTENT_URI for thread $threadId", e)
+                    0
+                }
+            }
 
             Log.d(
                 "SmsRepository",
-                "Thread ID: $threatId, deleted SMS records: $count"
+                "Thread ID: $threadId, deleted SMS records: $count"
             )
 
             deletedCount += count
@@ -134,6 +153,77 @@ class SmsRepository(
         Log.d("SmsRepository", "Total deleted SMS records: $deletedCount")
 
         deletedCount
+    }
+
+    suspend fun getMessagesForThread(
+        threadId: Long
+    ): List<SmsMessageData> = withContext(Dispatchers.IO) {
+        val messages = mutableListOf<SmsMessageData>()
+
+        val projection = arrayOf(
+            Telephony.Sms._ID,
+            Telephony.Sms.ADDRESS,
+            Telephony.Sms.BODY,
+            Telephony.Sms.DATE,
+            Telephony.Sms.THREAD_ID,
+            Telephony.Sms.TYPE
+        )
+
+        val selection = "${Telephony.Sms.THREAD_ID} = ?"
+        val selectionArgs = arrayOf(threadId.toString())
+        val sortOrder = "${Telephony.Sms.DATE} ASC, ${Telephony.Sms._ID} ASC"
+
+        contentResolver.query(
+            Telephony.Sms.CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            sortOrder
+        )?.use { cursor ->
+            val idIndex = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
+            val addressIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+            val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+            val dateIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
+            val threadIdIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
+            val typeIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.TYPE)
+
+            while (cursor.moveToNext()) {
+                messages.add(
+                    SmsMessageData(
+                        id = cursor.getLong(idIndex),
+                        threadId = cursor.getLong(threadIdIndex),
+                        address = cursor.getString(addressIndex),
+                        body = cursor.getString(bodyIndex).orEmpty(),
+                        date = cursor.getLong(dateIndex),
+                        type = cursor.getInt(typeIndex)
+                    )
+                )
+            }
+        }
+
+        messages
+    }
+
+    suspend fun getOrCreateThreadId(address: String): Long = withContext(Dispatchers.IO) {
+        try {
+            val projection = arrayOf(Telephony.Sms.THREAD_ID)
+            val selection = "${Telephony.Sms.ADDRESS} = ?"
+            val selectionArgs = arrayOf(address)
+            contentResolver.query(
+                Telephony.Sms.CONTENT_URI,
+                projection,
+                selection,
+                selectionArgs,
+                "${Telephony.Sms.DATE} DESC"
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    return@withContext cursor.getLong(cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID))
+                }
+            }
+            address.hashCode().toLong()
+        } catch (e: Exception) {
+            address.hashCode().toLong()
+        }
     }
 
     suspend fun searchConversations(

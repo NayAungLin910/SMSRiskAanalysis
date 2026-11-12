@@ -5,15 +5,18 @@ import com.example.smsriskanalysis.functions.permissions.SmsPermissionHandler
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.crypto.hpke.Recipient
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.provider.Telephony
 import android.util.Log
-import android.widget.Space
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,7 +29,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -52,16 +54,26 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.example.smsriskanalysis.composables.AppDialog
 import com.example.smsriskanalysis.composables.AppDialogType
 import com.example.smsriskanalysis.composables.ConversationSearchBar
 import com.example.smsriskanalysis.composables.MainNavbar
 import com.example.smsriskanalysis.data.repository.ContactRepository
 import com.example.smsriskanalysis.data.repository.SmsRepository
+import com.example.smsriskanalysis.functions.permissions.DefaultSmsRoleHandler
+import com.example.smsriskanalysis.functions.permissions.isDefaultSmsApp
+import com.example.smsriskanalysis.layout.ChatScreen
 import com.example.smsriskanalysis.layout.SearchScreen
 import com.example.smsriskanalysis.observers.SmsContentObserver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.smsriskanalysis.composables.NewMessageDialog
+import com.example.smsriskanalysis.functions.sms.SmsSender
+import java.util.jar.Manifest
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,6 +143,10 @@ fun MyScreen(
     var showPermissionDeniedDialog =
         permissionWasDenied && (!hasSmsPermission || !hasContactPermission)
 
+    var selectedConversationForChat by remember {
+        mutableStateOf<ConversationRowData?>(null)
+    }
+
     var conversations by remember {
         mutableStateOf<List<ConversationRowData>>(emptyList())
     }
@@ -165,38 +181,125 @@ fun MyScreen(
         mutableStateOf(false)
     }
 
-    var showDeleteErrorDialog by remember {
-        mutableStateOf(false)
-    }
-
-    val preferences = remember(context) {
-        context.getSharedPreferences("sms_risk_analysis_preferences", Context.MODE_PRIVATE)
-    }
-
-    var showDefaultSmsRoleDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var showDefaultSmsRoleDeniedDialog by remember {
-        mutableStateOf(false)
-    }
-
     var roleRequestForDelete by remember {
         mutableStateOf(false)
     }
 
-    SmsPermissionHandler(
-        requestKey = smsRequestKey,
-        onPermissionGranted = {
-            hasSmsPermission = true
-        },
-        onPermissionDenied = {
-            hasSmsPermission = false
-            permissionWasDenied = true
-        }
-    )
+    var isDefaultSms by remember {
+        mutableStateOf(isDefaultSmsApp(context))
+    }
 
-    if (hasSmsPermission) {
+    var showMessageDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var newMessageError by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var pendingNewMessage by remember {
+        mutableStateOf<Pair<String, String>?>(null)
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    fun performNewMessageSend(
+        recipient: String,
+        message: String
+    ) {
+        when(
+            val result = SmsSender.send(
+                context,
+                recipient,
+                message,
+            )
+        ) {
+            SmsSender.SendResult.Success -> {
+                newMessageError = null
+                showMessageDialog = false
+                Log.d(
+                    "New Message",
+                    "Sms submission accepeted for $recipient"
+                )
+            }
+
+            is SmsSender.SendResult.Failure -> {
+                newMessageError = result.reason
+            }
+        }
+    }
+
+    val sendSmsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val pending = pendingNewMessage
+        pendingNewMessage = null
+
+        if (granted && pending != null) {
+            performNewMessageSend(
+                pending.first,
+                pending.second
+            )
+        } else if(!granted) {
+            newMessageError = "SMS permission is required to send messages."
+        }
+    }
+
+    fun sendNewMessage(
+        recipient: String,
+        message: String
+    ) {
+        newMessageError = null
+
+        if(
+            ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.SEND_SMS
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            performNewMessageSend(recipient, message)
+        } else {
+            pendingNewMessage = recipient to message
+
+            sendSmsPermissionLauncher.launch(
+                android.Manifest.permission.SEND_SMS
+            )
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isDefaultSms = isDefaultSmsApp(context)
+
+                Log.d(
+                    "SmsRoleDebug",
+                    "App resumed. Default SMS role: $isDefaultSms"
+                )
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    if (isDefaultSms) {
+        SmsPermissionHandler(
+            requestKey = smsRequestKey,
+            onPermissionGranted = {
+                hasSmsPermission = true
+            },
+            onPermissionDenied = {
+                hasSmsPermission = false
+                permissionWasDenied = true
+            }
+        )
+    }
+
+    if (isDefaultSms && hasSmsPermission) {
         ContactPermissionHandler(
             requestKey = contactRequestKey,
             onPermissionGranted = {
@@ -208,6 +311,71 @@ fun MyScreen(
             }
         )
     }
+    fun deleteSelectedConversations() {
+        val idsToDelete = selectedThreadIds
+        if (idsToDelete.isEmpty()) return
+
+        coroutineScope.launch {
+            deleteError = null
+
+            try {
+                smsRepository.deleteConversations(idsToDelete)
+
+                conversations = conversations.filterNot {
+                    it.threadId in idsToDelete
+                }
+
+                selectedThreadIds = emptySet()
+                isSelectionMode = false
+
+                isLoading = true
+
+                try {
+                    val page = smsRepository.getConversationsPage(
+                        limit = pageSize,
+                        offset = 0
+                    )
+                    conversations = page.conversations
+                    hasMoreConversations = page.hasMore
+                    nextConversationOffset = page.nextOffset
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(
+                        "MyScreen",
+                        "Messages were deleted but the list could not refresh."
+                    )
+                } finally {
+                    isLoading = false
+                }
+            } catch (e: SecurityException) {
+                deleteError =
+                    "Android denied deletion. This app may need to be set as the default SMS app. "
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("MyScreen", "Failed to delete conversations", e)
+                deleteError = e.message ?: "Unable to delete selected conversations."
+            }
+        }
+    }
+
+    val requestDefaultSmsRole = DefaultSmsRoleHandler(
+        onRoleGranted = {
+            isDefaultSms = true
+
+            if (roleRequestForDelete) {
+                roleRequestForDelete = false
+                deleteSelectedConversations()
+            }
+        },
+        onRoleDenied = {
+            roleRequestForDelete = false
+        },
+        onRequestableDenied = {
+            roleRequestForDelete = false
+        }
+    )
 
     LaunchedEffect(conversations.isNotEmpty(), isLoading, isSearchScreen) {
         if (conversations.isNotEmpty() && !isLoading && !hasAppliedInitialScroll && !isSearchScreen) {
@@ -216,14 +384,9 @@ fun MyScreen(
         }
     }
 
-    LaunchedEffect(hasSmsPermission, hasContactPermission) {
-        if (!hasSmsPermission || !hasContactPermission) {
-            permissionWasDenied = false
-        }
-    }
 
-    LaunchedEffect(hasSmsPermission, hasContactPermission) {
-        if (!hasSmsPermission || !hasContactPermission) {
+    LaunchedEffect(hasSmsPermission) {
+        if (!hasSmsPermission) {
             isLoading = false
             return@LaunchedEffect
         }
@@ -279,7 +442,7 @@ fun MyScreen(
     ) {
         if (isSearchScreen) return@LaunchedEffect
 
-        if (!hasSmsPermission || !hasContactPermission) {
+        if (!hasSmsPermission) {
             return@LaunchedEffect
         }
 
@@ -317,11 +480,10 @@ fun MyScreen(
 
     DisposableEffect(
         hasSmsPermission,
-        hasContactPermission,
         smsRepository,
         hasCompletedInitialLoad
     ) {
-        if (hasSmsPermission && hasContactPermission && hasCompletedInitialLoad) {
+        if (hasSmsPermission && hasCompletedInitialLoad) {
             val observer = SmsContentObserver {
                 coroutineScope.launch {
                     try {
@@ -365,14 +527,14 @@ fun MyScreen(
         AppDialog(
             title = "Permission Required",
             message = """
-            SMS and Contacts permissions are required for this app to work properly.
-
-            SMS permission: Allows the app to read your SMS messages so it can display your conversations and help identify potential scam messages.
-
-            Contacts permission: Allows the app to access your contacts so it can display contact names alongside their phone numbers.
-
-            You can manage these permissions in your device settings.
-        """.trimIndent(),
+                SMS and Contacts permissions are required for this app to work properly.
+    
+                SMS permission: Allows the app to read your SMS messages so it can display your conversations and help identify potential scam messages.
+    
+                Contacts permission: Allows the app to access your contacts so it can display contact names alongside their phone numbers.
+    
+                You can manage these permissions in your device settings.
+            """.trimIndent(),
             type = AppDialogType.PERMISSION,
             dismissText = "Close App",
             dismissRequest = false,
@@ -380,11 +542,30 @@ fun MyScreen(
                 (context as Activity).finish()
             },
             onConfirm = {
-                val intent = Intent(
-                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.fromParts("package", context.packageName, null)
-                )
-                context.startActivity(intent)
+                try {
+                    val intent = Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", context.packageName, null)
+                    )
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e("DefaultSmsRole", "Failed to open app settings", e)
+                } finally {
+                }
+            }
+        )
+    }
+
+    if (!isDefaultSms) {
+        AppDialog(
+            title = "Default SMS App Required",
+            message = "SMS Risk Analysis must be set as your default SMS app to operate. Please set this app as your default SMS app to use it.",
+            type = AppDialogType.MESSAGE,
+            confirmText = "Set as Default SMS App",
+            dismissRequest = false,
+            onDismiss = {},
+            onConfirm = {
+                requestDefaultSmsRole()
             }
         )
     }
@@ -400,86 +581,83 @@ fun MyScreen(
             },
             onConfirm = {
                 showDeleteConfirmation = false
+                deleteSelectedConversations()
             }
         )
     }
 
-    fun deleteSelectedConversations() {
-        val idsToDelete = selectedThreadIds
-        if (idsToDelete.isEmpty()) return
-
-        coroutineScope.launch {
-            deleteError = null
-
-            try {
-                smsRepository.deleteConversations(idsToDelete)
-
-                conversations = conversations.filterNot {
-                    it.threadId in idsToDelete
-                }
-
-                selectedThreadIds = emptySet()
-                isSelectionMode = false
-
-                isLoading = true
-
-                try {
-                    val page = smsRepository.getConversationsPage(
-                        limit = pageSize,
-                        offset = 0
-                    )
-                    conversations = page.conversations
-                    hasMoreConversations = page.hasMore
-                    nextConversationOffset = page.nextOffset
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.e(
-                        "MyScreen",
-                        "Messages were deleted but the list could not refresh."
-                    )
-                } finally {
-                    isLoading = false
-                }
-            } catch (e: SecurityException) {
-                deleteError =
-                    "Android denied deletion. This app may need to be set as the default SMS app. "
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e("MyScreen", "Failed to delete conversations", e)
-                deleteError = e.message ?: "Unable to delete selected conversations."
-            }
-        }
+    if (showMessageDialog) {
+        NewMessageDialog(
+            onDismiss = {
+                showMessageDialog = false
+            },
+            onSend = {recipient, message ->
+                sendNewMessage(
+                    recipient = recipient,
+                    message = message
+                )
+            },
+            errorMessage = newMessageError
+        )
     }
 
     Box(
         modifier = modifier.fillMaxSize(),
     ) {
-        if (isSearchScreen) {
+        if (selectedConversationForChat != null) {
+            ChatScreen(
+                conversation = selectedConversationForChat!!,
+                onBack = { selectedConversationForChat = null },
+                smsRepository = smsRepository
+            )
+        } else if (isSearchScreen) {
             SearchScreen(
                 onBack = { isSearchScreen = false },
                 contactRepository = contactRepository,
-                smsRepository = smsRepository
+                smsRepository = smsRepository,
+                onConversationClick = { conversation ->
+                    isSearchScreen = false
+                    selectedConversationForChat = conversation
+                },
+                onContactClick = { contact ->
+                    isSearchScreen = false
+                    coroutineScope.launch {
+                        val threadId = smsRepository.getOrCreateThreadId(contact.phoneNumber)
+                        selectedConversationForChat = ConversationRowData(
+                            threadId = threadId,
+                            address = contact.phoneNumber,
+                            contactName = contact.name,
+                            contactPhotoUri = contact.photoUri,
+                            latestMessage = "",
+                            latestMessageTime = System.currentTimeMillis(),
+                            unreadCount = 0
+                        )
+                    }
+                }
             )
         } else {
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-
-                MainNavbar(
-                    isSelectionMode = isSelectionMode,
-                    onSelectCLick = {
-                        selectedThreadIds = emptySet()
-                        deleteError = null
-                        isSelectionMode = true
-                    },
-                    onDoneClick = {
-                        selectedThreadIds = emptySet()
-                        deleteError = null
-                        isSelectionMode = false
-                    }
-                )
+                if (!isLoading && !isSearchScreen && hasCompletedInitialLoad && isDefaultSms && hasSmsPermission && hasContactPermission) {
+                    MainNavbar(
+                        isSelectionMode = isSelectionMode,
+                        onSelectCLick = {
+                            selectedThreadIds = emptySet()
+                            deleteError = null
+                            isSelectionMode = true
+                        },
+                        onDoneClick = {
+                            selectedThreadIds = emptySet()
+                            deleteError = null
+                            isSelectionMode = false
+                        },
+                        onMessageClick = {
+                            showMessageDialog = true
+                        },
+                        hasConversations = conversations.isNotEmpty(),
+                    )
+                }
                 when {
                     !hasSmsPermission || !hasContactPermission -> {
                         Box(
@@ -557,8 +735,10 @@ fun MyScreen(
                                         if (hasSmsPermission && hasContactPermission) {
                                             isSearchScreen = true
                                         } else if (!hasSmsPermission) {
+                                            permissionWasDenied = false
                                             smsRequestKey++
                                         } else {
+                                            permissionWasDenied = false
                                             contactRequestKey++
                                         }
                                     }
@@ -579,6 +759,9 @@ fun MyScreen(
                                         } else {
                                             selectedThreadIds + threadId
                                         }
+                                    },
+                                    onClick = {
+                                        selectedConversationForChat = conversation
                                     }
                                 )
                             }

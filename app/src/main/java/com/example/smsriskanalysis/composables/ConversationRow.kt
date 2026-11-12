@@ -27,7 +27,8 @@ fun ConversationRow(
     modifier: Modifier = Modifier,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
-    onSelectClick: (() -> Unit)? = null
+    onSelectClick: (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null
 ) {
     val displayName = conversation.contactName ?: conversation.address
     val timeString = formatTimestamp(conversation.latestMessageTime)
@@ -40,7 +41,8 @@ fun ConversationRow(
         modifier = modifier,
         isSelectionMode = isSelectionMode,
         isSelected = isSelected,
-        onSelectClick = onSelectClick
+        onSelectClick = onSelectClick,
+        onClick = onClick
     )
 }
 
@@ -55,13 +57,16 @@ fun ConversationRow(
     isSelected: Boolean = false,
     isSelectionMode: Boolean = false,
     onSelectClick: (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if(isSelectionMode && onSelectClick != null) {
-                    Modifier.clickable{onSelectClick()}
+                if (isSelectionMode && onSelectClick != null) {
+                    Modifier.clickable { onSelectClick() }
+                } else if (!isSelectionMode && onClick != null) {
+                    Modifier.clickable { onClick() }
                 } else {
                     Modifier
                 }
@@ -69,7 +74,7 @@ fun ConversationRow(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if(isSelectionMode) {
+        if (isSelectionMode) {
             Checkbox(
                 checked = isSelected,
                 onCheckedChange = {

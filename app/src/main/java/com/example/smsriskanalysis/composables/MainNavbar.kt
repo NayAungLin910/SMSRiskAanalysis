@@ -1,10 +1,16 @@
 package com.example.smsriskanalysis.composables
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,28 +28,32 @@ fun MainNavbar(
     isSelectionMode: Boolean = false,
     onSelectCLick: () -> Unit = {},
     onDoneClick: () -> Unit = {},
-    modifier: Modifier = Modifier
+    onMessageClick: () -> Unit = {},
+    modifier: Modifier = Modifier,
+    hasConversations: Boolean,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (isSelectionMode) {
             TextButton(onClick = onDoneClick) {
                 Text(
                     text = "Done",
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.titleMedium
                 )
             }
-        } else {
+        } else if (hasConversations) {
             TextButton(onClick = { expanded = true }) {
                 Text(
                     text = "Edit",
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.titleMedium
                 )
             }
             DropdownMenu(
@@ -52,10 +62,22 @@ fun MainNavbar(
             ) {
                 DropdownMenuItem(
                     text = { Text("Select") },
-                    onClick= {
+                    onClick = {
                         expanded = false
                         onSelectCLick()
                     }
+                )
+            }
+        }
+
+        if (!isSelectionMode) {
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(onClick = onMessageClick) {
+                Icon(
+                    imageVector = Icons.Filled.Edit,
+                    contentDescription = "New Message",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
                 )
             }
         }

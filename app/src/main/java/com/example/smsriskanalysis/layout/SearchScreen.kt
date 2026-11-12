@@ -2,6 +2,7 @@ package com.example.smsriskanalysis.layout
 
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,7 +58,11 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun SearchScreen(
-    onBack: () -> Unit, contactRepository: ContactRepository, smsRepository: SmsRepository
+    onBack: () -> Unit,
+    contactRepository: ContactRepository,
+    smsRepository: SmsRepository,
+    onConversationClick: ((ConversationRowData) -> Unit)? = null,
+    onContactClick: ((ContactRepository.ContactSearchData) -> Unit)? = null
 ) {
     var searchQuery by remember {
         mutableStateOf("")
@@ -204,7 +209,9 @@ fun SearchScreen(
                 ) {
                     items(items = contacts, key = { "${it.id}:${it.phoneNumber}" }) { contact ->
                         Column(
-                            modifier = Modifier.width(72.dp),
+                            modifier = Modifier
+                                .width(72.dp)
+                                .clickable { onContactClick?.invoke(contact) },
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             ProfileImage(
@@ -242,7 +249,11 @@ fun SearchScreen(
             }
             items(
                 items = conversations, key = { it.threadId }) { conversation ->
-                ConversationRow(conversation, modifier = Modifier.fillMaxWidth())
+                ConversationRow(
+                    conversation = conversation,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onConversationClick?.invoke(conversation) }
+                )
             }
             if (isLoading) {
                 item {
