@@ -3,10 +3,8 @@ package com.example.smsriskanalysis
 import com.example.smsriskanalysis.functions.permissions.ContactPermissionHandler
 import com.example.smsriskanalysis.functions.permissions.SmsPermissionHandler
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.crypto.hpke.Recipient
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -72,12 +70,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.smsriskanalysis.composables.NewMessageDialog
+import com.example.smsriskanalysis.functions.permissions.NotificationPermissionHandler
 import com.example.smsriskanalysis.functions.sms.SmsSender
 import java.util.jar.Manifest
 
 class MainActivity : ComponentActivity() {
+    private val notificationThreadId = mutableStateOf<Long?>(null)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        notificationThreadId.value = intent.getLongExtra("threatId", -1L).takeIf {
+            it != -1L
+        }
         enableEdgeToEdge()
         setContent {
             SMSRiskAnalysisTheme {
@@ -85,9 +88,21 @@ class MainActivity : ComponentActivity() {
                     MyScreen(
                         name = "Android",
                         modifier = Modifier.padding(innerPadding),
+                        notificationThreadId = notificationThreadId.value,
+                        onNotificationHandled = {
+                            notificationThreadId.value = null
+                        }
                     )
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        notificationThreadId.value = intent.getLongExtra("threatId", -1L).takeIf {
+            it != -1L
         }
     }
 }
@@ -97,6 +112,8 @@ class MainActivity : ComponentActivity() {
 fun MyScreen(
     name: String,
     modifier: Modifier = Modifier,
+    notificationThreadId: Long? = null,
+    onNotificationHandled: () -> Unit = {}
 ) {
 
     val context = LocalContext.current
@@ -201,13 +218,21 @@ fun MyScreen(
         mutableStateOf<Pair<String, String>?>(null)
     }
 
+    var hasNotificationPermission by remember {
+        mutableStateOf(false)
+    }
+
+    var notificationRequestKey by remember {
+        mutableStateOf(0)
+    }
+
     val lifecycleOwner = LocalLifecycleOwner.current
 
     fun performNewMessageSend(
         recipient: String,
         message: String
     ) {
-        when(
+        when (
             val result = SmsSender.send(
                 context,
                 recipient,
@@ -240,7 +265,7 @@ fun MyScreen(
                 pending.first,
                 pending.second
             )
-        } else if(!granted) {
+        } else if (!granted) {
             newMessageError = "SMS permission is required to send messages."
         }
     }
@@ -251,7 +276,7 @@ fun MyScreen(
     ) {
         newMessageError = null
 
-        if(
+        if (
             ContextCompat.checkSelfPermission(
                 context,
                 android.Manifest.permission.SEND_SMS
@@ -308,6 +333,20 @@ fun MyScreen(
             onPermissionDenied = {
                 hasContactPermission = false
                 permissionWasDenied = true
+            }
+        )
+    }
+
+    if (isDefaultSms && hasSmsPermission) {
+        NotificationPermissionHandler(
+            requestKey = notificationRequestKey,
+            onPermissionGranted = {
+                hasNotificationPermission = true
+                Log.d("NotificationPermission", "Permission granted")
+            },
+            onPermissionDenied = {
+                hasNotificationPermission = false
+                Log.d("NotificationPermission", "Permission denied")
             }
         )
     }
@@ -384,6 +423,36 @@ fun MyScreen(
         }
     }
 
+    LaunchedEffect(
+        notificationThreadId,
+        conversations,
+        hasCompletedInitialLoad
+    ) {
+        val targetThreatId = notificationThreadId ?: return@LaunchedEffect
+        if (!hasSmsPermission || !hasCompletedInitialLoad) {
+            return@LaunchedEffect
+        }
+        val targetConversation = conversations.find {
+            it.threadId == targetThreatId
+        }
+        if (targetConversation != null) {
+            isSearchScreen = false
+            isSelectionMode = false
+            selectedThreadIds = emptySet()
+
+            selectedConversationForChat = targetConversation
+            Log.d(
+                "NotificationNavigation",
+                "Opening conversation: $targetThreatId"
+            )
+        } else {
+            Log.w(
+                "NotificationNavigation",
+                "Notification target conversation not found: $targetThreatId"
+            )
+        }
+        onNotificationHandled()
+    }
 
     LaunchedEffect(hasSmsPermission) {
         if (!hasSmsPermission) {
@@ -591,7 +660,7 @@ fun MyScreen(
             onDismiss = {
                 showMessageDialog = false
             },
-            onSend = {recipient, message ->
+            onSend = { recipient, message ->
                 sendNewMessage(
                     recipient = recipient,
                     message = message
